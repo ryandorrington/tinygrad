@@ -48,8 +48,8 @@ class RawBufferMapped(RawBufferCopyIn):
     from tinygrad.runtime.ops_disk import RawDiskBuffer
     if isinstance(src.realized, RawDiskBuffer):
       assert all_int(shape), "does not support symbolic shape"
-      ret = cast(RawBufferMapped, cls(prod(shape), dtype, **kwargs))
-      src.realized.test_func(ret._buffer())
+      ret = cls(prod(shape), dtype, **kwargs)
+      src.realized.readinto(cast(RawBufferMapped, ret)._buffer())
       return ret
     return cast(RawBufferMapped, cls.fromCPU(src.realized.toCPU(), **kwargs))
 
