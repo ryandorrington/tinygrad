@@ -11,14 +11,14 @@ from tinygrad import Device
 print(Device.DEFAULT)
 # hyperparameters
 
-batch_size = 32  # how many independent sequences will we process in parallel?
-block_size = 8  # what is the maximum context length for predictions?
+batch_size = 64  # how many independent sequences will we process in parallel?
+block_size = 256  # what is the maximum context length for predictions?
 max_iters = 5000
 eval_interval = 500
-learning_rate = 1e-3
+learning_rate = 3e-4
 eval_iters = 200
-n_embd = 32
-num_heads = 4
+n_embd = 384
+num_heads = 6
 head_size = n_embd // num_heads
 # ------------
 
@@ -62,7 +62,8 @@ def get_batch(split):
     ix = Tensor.randint((batch_size,), high=len(data) - block_size)
     x = stack_data(data, ix, block_size, offset=0)
     y = stack_data(data, ix, block_size, offset=1)
-    x, y = x.to(Device.DEFAULT), y.to(Device.DEFAULT)
+    if Device.DEFAULT == 'CUDA':
+        x, y = x.to(Device.DEFAULT), y.to(Device.DEFAULT)
     return x, y
 
 
@@ -149,7 +150,8 @@ class LanguageModel:
         # each token directly reads off the logits for the next token from a lookup table
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.blocks = [Block(), Block(), Block(), nn.LayerNorm(n_embd)]
+        self.blocks = [Block(), Block(), Block(), Block(), Block(), Block()]
+        self.ln_f = nn.LayerNorm(n_embd)
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
     def __call__(self, idx, targets=None):
@@ -161,6 +163,7 @@ class LanguageModel:
         # (B,T,C) + (T,C) -> (B,T,C) + (1,T,C) -> (B,T,C)
         x = tok_emb + pos_emb
         x = x.sequential(self.blocks)
+        x = self.ln_f(x)
         logits = self.lm_head(x)  # (B,T,vocab_size)
 
         if targets is None:
