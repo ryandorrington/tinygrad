@@ -177,6 +177,15 @@ model = LanguageModel()
 optimizer = AdamW(nn.state.get_parameters(model), lr=learning_rate)
 
 
+@TinyJit
+def train_step(xb, yb):
+    logits, loss = model(xb, yb)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    return loss
+
+
 for iter in range(max_iters):
 
     # every once in a while evaluate the loss on train and val sets
@@ -189,12 +198,7 @@ for iter in range(max_iters):
     xb, yb = get_batch('train')
 
     # evaluate the loss
-    logits, loss = model(xb, yb)
-
-    optimizer.zero_grad()
-    loss.backward()
-
-    optimizer.step()
+    loss = train_step(xb, yb)
 
 # generate from the model
 context = Tensor.zeros((1, 1), dtype=dtypes.long)
