@@ -100,7 +100,7 @@ class Head:
 
         wei = q @ k.transpose(-2, -1) * C**-0.5
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf'))
-        wei = wei.softmax()
+        wei = wei.softmax().dropout(0.2)
 
         v = self.value(x)
         out = wei @ v
@@ -117,26 +117,29 @@ class MultiHeadAttention:
 
     def __call__(self, x):
         t = Tensor.cat(self.h1(x), self.h2(x), self.h3(x), self.h4(x), dim=-1)
-        return self.proj(t)
+
+        return self.proj(t).dropout(0.2)
 
 
-class FeedForward():
+class FeedForward:
     def __init__(self):
         self.net = [nn.Linear(n_embd, 4 * n_embd), Tensor.relu,
                     nn.Linear(4 * n_embd, n_embd)]
 
     def __call__(self, x):
-        return x.sequential(self.net)
+        return x.sequential(self.net).dropout(0.2)
 
 
-class Block():
+class Block:
     def __init__(self):
         self.sa = MultiHeadAttention()
         self.ffwd = FeedForward()
+        self.ln1 = nn.LayerNorm(n_embd)
+        self.ln2 = nn.LayerNorm(n_embd)
 
     def __call__(self, x):
-        x = x + self.sa(x)
-        x = x + self.ffwd(x)
+        x = x + self.sa(self.ln1(x))
+        x = x + self.ffwd(self.ln2(x))
         return x
 
 
@@ -146,7 +149,7 @@ class LanguageModel:
         # each token directly reads off the logits for the next token from a lookup table
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.blocks = [Block(), Block(), Block(), Block()]
+        self.blocks = [Block(), Block(), Block(), nn.LayerNorm(n_embd)]
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
     def __call__(self, idx, targets=None):
