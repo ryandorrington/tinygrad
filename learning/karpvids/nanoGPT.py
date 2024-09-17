@@ -65,7 +65,6 @@ def get_batch(split):
     return x, y
 
 
-@TinyJit
 def estimate_loss():
     Tensor.no_grad = True
     Tensor.training = False
@@ -131,7 +130,6 @@ class LanguageModel:
         self.sa_heads = MultiHeadAttention()
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
-    @TinyJit
     def __call__(self, idx, targets=None):
         B, T = idx.shape
 
@@ -153,7 +151,6 @@ class LanguageModel:
 
         return logits, loss
 
-    @TinyJit
     def generate(self, idx, max_new_tokens):
         # idx is (B, T) array of indices in the current context
         for _ in range(max_new_tokens):
