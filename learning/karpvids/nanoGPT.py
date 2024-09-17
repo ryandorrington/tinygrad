@@ -1,13 +1,15 @@
 import os
 
-from tinygrad import Context, nn, Tensor
+from tinygrad import Context, nn, Tensor, TinyJit
 from tinygrad.nn.optim import AdamW
 from tinygrad import dtypes
 import numpy as np
 
 import matplotlib.pyplot as plt  # for making figures
-
+from tinygrad import Device
+print(Device.DEFAULT)
 # hyperparameters
+
 batch_size = 32  # how many independent sequences will we process in parallel?
 block_size = 8  # what is the maximum context length for predictions?
 max_iters = 1000
@@ -59,9 +61,11 @@ def get_batch(split):
     ix = Tensor.randint((batch_size,), high=len(data) - block_size)
     x = stack_data(data, ix, block_size, offset=0)
     y = stack_data(data, ix, block_size, offset=1)
+    x, y = x.to(Device.DEFAULT), y.to(Device.DEFAULT)
     return x, y
 
 
+@TinyJit
 def estimate_loss():
     Tensor.no_grad = True
     Tensor.training = False
@@ -127,6 +131,7 @@ class LanguageModel:
         self.sa_heads = MultiHeadAttention()
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
+    @TinyJit
     def __call__(self, idx, targets=None):
         B, T = idx.shape
 
@@ -148,6 +153,7 @@ class LanguageModel:
 
         return logits, loss
 
+    @TinyJit
     def generate(self, idx, max_new_tokens):
         # idx is (B, T) array of indices in the current context
         for _ in range(max_new_tokens):
