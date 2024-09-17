@@ -113,13 +113,31 @@ class MultiHeadAttention:
         self.h2 = Head()
         self.h3 = Head()
         self.h4 = Head()
+        self.proj = nn.Linear(n_embd, n_embd)
 
     def __call__(self, x):
-        B, T, _ = x.shape
+        t = Tensor.cat(self.h1(x), self.h2(x), self.h3(x), self.h4(x), dim=-1)
+        return self.proj(t)
 
-        t = Tensor.cat(self.h1(x), self.h2(x), self.h3(x), self.h4(x))
-        t = t.reshape(B, T, num_heads * head_size)
-        return t
+
+class FeedForward():
+    def __init__(self):
+        self.net = [nn.Linear(n_embd, 4 * n_embd), Tensor.relu,
+                    nn.Linear(4 * n_embd, n_embd)]
+
+    def __call__(self, x):
+        return x.sequential(self.net)
+
+
+class Block():
+    def __init__(self):
+        self.sa = MultiHeadAttention()
+        self.ffwd = FeedForward()
+
+    def __call__(self, x):
+        x = x + self.sa(x)
+        x = x + self.ffwd(x)
+        return x
 
 
 class LanguageModel:
@@ -128,7 +146,7 @@ class LanguageModel:
         # each token directly reads off the logits for the next token from a lookup table
         self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
         self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.sa_heads = MultiHeadAttention()
+        self.blocks = [Block(), Block(), Block(), Block()]
         self.lm_head = nn.Linear(n_embd, vocab_size)
 
     def __call__(self, idx, targets=None):
@@ -139,7 +157,7 @@ class LanguageModel:
         pos_emb = self.position_embedding_table(Tensor.arange(T))  # (T,C)
         # (B,T,C) + (T,C) -> (B,T,C) + (1,T,C) -> (B,T,C)
         x = tok_emb + pos_emb
-        x = self.sa_heads(x)
+        x = x.sequential(self.blocks)
         logits = self.lm_head(x)  # (B,T,vocab_size)
 
         if targets is None:
