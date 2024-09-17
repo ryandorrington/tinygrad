@@ -14,7 +14,7 @@ print(Device.DEFAULT)
 batch_size = 32  # how many independent sequences will we process in parallel?
 block_size = 8  # what is the maximum context length for predictions?
 max_iters = 1000
-eval_interval = 300
+eval_interval = 999
 learning_rate = 1e-3
 eval_iters = 200
 n_embd = 32
