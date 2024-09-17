@@ -1,4 +1,5 @@
 import os
+import time
 
 from tinygrad import Context, nn, Tensor, TinyJit
 from tinygrad.nn.optim import AdamW
@@ -186,13 +187,17 @@ def train_step(xb, yb):
     return loss
 
 
+last_time = time.time()
 for iter in range(max_iters):
 
     # every once in a while evaluate the loss on train and val sets
     if iter % eval_interval == 0:
+        current_time = time.time()
+        elapsed_time = current_time - last_time
+        last_time = current_time
         losses = estimate_loss()
         print(
-            f"step {iter}: train loss {losses['train'].item():.4f}, val loss {losses['val'].item():.4f}")
+            f"step {iter}: train loss {losses['train'].item():.4f}, val loss {losses['val'].item():.4f}, time: {elapsed_time:.2f}s")
 
     # sample a batch of data
     xb, yb = get_batch('train')
