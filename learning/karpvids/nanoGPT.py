@@ -114,10 +114,13 @@ class MultiHeadAttention:
         self.h2 = Head()
         self.h3 = Head()
         self.h4 = Head()
+        self.h5 = Head()
+        self.h6 = Head()
         self.proj = nn.Linear(n_embd, n_embd)
 
     def __call__(self, x):
-        t = Tensor.cat(self.h1(x), self.h2(x), self.h3(x), self.h4(x), dim=-1)
+        t = Tensor.cat(self.h1(x), self.h2(x), self.h3(
+            x), self.h4(x), self.h5(x), self.h6(x), dim=-1)
 
         return self.proj(t).dropout(0.2)
 
