@@ -199,7 +199,7 @@ class DataLoader:
         
         enc = tiktoken.get_encoding("gpt2")
         tokens = enc.encode(text)
-        self.tokens = Tensor(tokens).shard(GPUS, axis=0)
+        self.tokens = Tensor(tokens)
 
         print(f"Loaded {len(tokens)} tokens")
         print(f"1 epoch = {len(tokens) // (B * T)} batches")
@@ -232,7 +232,9 @@ def step():
     t0 = time.time()
     x, y = train_loader.next_batch()
     
-
+    # Shard the input data across available GPUs
+    x = x.shard(GPUS)
+    y = y.shard(GPUS)
 
     optimizer.zero_grad()
     logits = model(x)
