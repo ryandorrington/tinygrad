@@ -1,13 +1,16 @@
 import os
+from os import getenv
 import time
 
-from tinygrad import nn, Tensor, TinyJit
+from tinygrad import nn, Tensor, TinyJit, Device
 from tinygrad.nn.optim import AdamW
 from tinygrad import dtypes
-from tinygrad import Device
+from tinygrad.helpers import getenv
 
 import numpy as np
 import tiktoken
+
+GPUS = [f'{Device.DEFAULT}:{i}' for i in range(getenv("GPUS", 2))]
 
 # hyperparameters
 block_size: int = 1024  # Maximum sequence length for input and target
@@ -222,13 +225,18 @@ Tensor.training = True
 train_loader = DataLoader(B=8, T=1024)
 model = GPT()
 
-
+# Shard the model across available GPUs
+model = model.shard(GPUS)
 
 optimizer = AdamW(nn.state.get_parameters(model), lr=3e-4)
 
 def step():
     t0 = time.time()
     x, y = train_loader.next_batch()
+    
+    # Shard the input data across available GPUs
+    x = x.shard(GPUS)
+    y = y.shard(GPUS)
 
     optimizer.zero_grad()
     logits = model(x)
