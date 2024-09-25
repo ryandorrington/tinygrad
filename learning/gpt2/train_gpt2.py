@@ -199,7 +199,7 @@ class DataLoader:
         
         enc = tiktoken.get_encoding("gpt2")
         tokens = enc.encode(text)
-        self.tokens = Tensor(tokens)
+        self.tokens = Tensor(tokens).shard(GPUS, axis=0)
 
         print(f"Loaded {len(tokens)} tokens")
         print(f"1 epoch = {len(tokens) // (B * T)} batches")
@@ -225,8 +225,6 @@ Tensor.training = True
 train_loader = DataLoader(B=8, T=1024)
 model = GPT()
 
-# Shard the model across available GPUs
-model = model.shard(GPUS)
 
 optimizer = AdamW(nn.state.get_parameters(model), lr=3e-4)
 
@@ -234,9 +232,7 @@ def step():
     t0 = time.time()
     x, y = train_loader.next_batch()
     
-    # Shard the input data across available GPUs
-    x = x.shard(GPUS)
-    y = y.shard(GPUS)
+
 
     optimizer.zero_grad()
     logits = model(x)
@@ -252,9 +248,4 @@ tiny_step = TinyJit(step)
 print("TINYJIT ------------------------------")
 for i in range(50):
     loss, dt, tokens_per_second = tiny_step()
-    print(f"step {i}, loss: {loss.item()}, dt: {dt:.2f}ms, tokens_per_second: {tokens_per_second:.2f}")
-
-print("REGS ------------------------------")
-for i in range(50):
-    loss, dt, tokens_per_second = step()
     print(f"step {i}, loss: {loss.item()}, dt: {dt:.2f}ms, tokens_per_second: {tokens_per_second:.2f}")
