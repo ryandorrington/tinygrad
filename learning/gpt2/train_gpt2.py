@@ -222,8 +222,11 @@ Tensor.training = True
 train_loader = DataLoader(B=16, T=1024)
 model = GPT()
 
+
+
 optimizer = AdamW(nn.state.get_parameters(model), lr=3e-4)
-for i in range(50):
+
+def step():
     t0 = time.time()
     x, y = train_loader.next_batch()
 
@@ -233,4 +236,9 @@ for i in range(50):
     optimizer.step()
     t1 = time.time()
     dt = (t1 - t0) * 1000
+    return loss, dt
+
+tiny_step = TinyJit(step)
+for i in range(50):
+    loss, dt = tiny_step()
     print(f"step {i}, loss: {loss.item()}")
