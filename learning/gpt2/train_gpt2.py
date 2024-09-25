@@ -239,6 +239,13 @@ def step():
     return loss, dt
 
 tiny_step = TinyJit(step)
+
+print("TINYJIT ------------------------------")
 for i in range(50):
     loss, dt = tiny_step()
-    print(f"step {i}, loss: {loss.item()}")
+    print(f"step {i}, loss: {loss.item()}, dt: {dt:.2f}ms")
+
+    print("REGS ------------------------------")
+for i in range(50):
+    loss, dt = step()
+    print(f"step {i}, loss: {loss.item()}, dt: {dt:.2f}ms")
