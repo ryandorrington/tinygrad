@@ -201,7 +201,7 @@ class DataLoader:
         
         enc = tiktoken.get_encoding("gpt2")
         tokens = enc.encode(text)
-        self.tokens = Tensor(tokens)
+        self.tokens = Tensor(tokens).shard(GPUS)
 
         print(f"Loaded {len(tokens)} tokens")
         print(f"1 epoch = {len(tokens) // (B * T)} batches")
@@ -235,10 +235,6 @@ optimizer = AdamW(nn.state.get_parameters(model), lr=3e-4)
 def step():
     t0 = time.time()
     x, y = train_loader.next_batch()
-    
-    # Shard the input data across available GPUs
-    x = x.shard(GPUS)
-    y = y.shard(GPUS)
 
     optimizer.zero_grad()
     logits = model(x)
