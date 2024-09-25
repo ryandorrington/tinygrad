@@ -1,12 +1,13 @@
 import os
 import time
 
-from tinygrad import Context, nn, Tensor, TinyJit
+from tinygrad import nn, Tensor, TinyJit
 from tinygrad.nn.optim import AdamW
 from tinygrad import dtypes
 from tinygrad import Device
 
 import numpy as np
+import tiktoken
 
 # hyperparameters
 block_size: int = 1024  # Maximum sequence length for input and target
@@ -30,7 +31,8 @@ class CausalSelfAttention:
         B, T, C = x.size()  # batch size, sequence length, embedding dimensionality (n_embd)
 
         # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        q, k, v = self.c_attn(x).split(n_embd, dim=2)
+        qkv = self.c_attn(x)
+        q, k, v = qkv.split(n_embd, dim=2)
         k = k.reshape(B, T, n_head, C // n_head).transpose(1,
                                                            2)  # (B, nh, T, hs)
         q = q.reshape(B, T, n_head, C // n_head).transpose(1,
@@ -38,7 +40,7 @@ class CausalSelfAttention:
         v = v.reshape(B, T, n_head, C // n_head).transpose(1,
                                                            2)  # (B, nh, T, hs)
 
-        att = (q @ k.transpose(-2, -1)) * (1.0 / np.sqrt(k.shape[-1]))
+        att = (q @ k.transpose(-2, -1)) * (1.0 / np.sqrt(k.size(-1)))
         att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
         att = att.softmax(axis=-1)
         y = att @ v
@@ -49,8 +51,8 @@ class CausalSelfAttention:
 
 class MLP:
     def __init__(self):
-        self.c_fc = nn.Linear(n_embd, 4 * n_embd)
-        self.c_proj = nn.Linear(4 * n_embd, n_embd)
+        self.c_fc = nn.Linear(n_embd, 4 * n_embd, bias=True)
+        self.c_proj = nn.Linear(4 * n_embd, n_embd, bias=True)
 
     def __call__(self, x):
         x = self.c_fc(x).gelu()
@@ -60,14 +62,12 @@ class MLP:
 
 class Block:
     def __init__(self):
-        self.ln_1 = nn.LayerNorm(n_embd)
         self.attn = CausalSelfAttention()
-        self.ln_2 = nn.LayerNorm(n_embd)
         self.mlp = MLP()
 
     def __call__(self, x):
-        x = x + self.attn(self.ln_1(x))
-        x = x + self.mlp(self.ln_2(x))
+        x = x + self.attn(x.layernorm())
+        x = x + self.mlp(x.layernorm())
         return x
 
 
@@ -76,9 +76,12 @@ class GPT:
         self.wte = nn.Embedding(vocab_size, n_embd)
         self.wpe = nn.Embedding(block_size, n_embd)
         self.h = [Block() for _ in range(n_layer)]
-        self.ln_f = nn.LayerNorm(n_embd)
 
         self.lm_head = nn.Linear(n_embd, vocab_size, bias=False)
+
+        # weight sharing scheme
+        self.wte.weight = self.lm_head.weight
+
     @classmethod
     def from_pretrained(cls):
         # create a from-scratch initialized minGPT model
@@ -129,7 +132,7 @@ class GPT:
         print("All parameters successfully loaded and verified.")
         return model
     
-    def __call__(self, idx):
+    def __call__(self, idx, targets=None):
 
         B, T = idx.size()
         assert T <= block_size, f"Cannot forward sequence of length {T}, block size is only {block_size}"
@@ -143,45 +146,90 @@ class GPT:
 
         for block in self.h:
             x = block(x)
-        x = self.ln_f(x)
+        x = x.layernorm()
         
         logits = self.lm_head(x)
+
         return logits
 
-# -----------------------------------------------------------------------------
+def generate_from_hf(): 
+    num_return_sequences = 2
+    max_length = 30
+
+    model = GPT.from_pretrained()
+
+    print(f"Using device: {Device.DEFAULT}")
+
+    Tensor.training = False
+    Tensor.no_grad = True
+
+    enc = tiktoken.get_encoding("gpt2")
+    tokens = enc.encode("Hello, I'm a language model,")
+    tokens = Tensor(tokens, dtype=dtypes.long)
+    x = tokens.unsqueeze(0).repeat(num_return_sequences, 1)
+
+    while x.size(1) < max_length:
+        logits = model(x)
+        logits = logits[:, -1, :]
+        probs = logits.softmax(axis=-1)
+        ix = probs.multinomial(num_samples=1)
+
+        x = x.cat(ix, dim=1)
+
+    for i in range(num_return_sequences):
+        tokens = x[i, :max_length].tolist()
+        decoded = enc.decode(tokens)
+        print(">", decoded)
+
+    Tensor.training = True
+    Tensor.no_grad = False
 
 
 
+class DataLoader:
+    def __init__(self, B, T):
+        self.B = B
+        self.T = T
 
-num_return_sequences = 2
-max_length = 30
+        with open("tinyshakespeare.txt") as f:
+            text = f.read()
+        
+        enc = tiktoken.get_encoding("gpt2")
+        tokens = enc.encode(text)
+        self.tokens = Tensor(tokens)
 
-# model = GPT.from_pretrained()
+        print(f"Loaded {len(tokens)} tokens")
+        print(f"1 epoch = {len(tokens) // (B * T)} batches")
+
+        self.current_position = 0
+
+    def next_batch(self):
+        B, T = self.B, self.T
+        buf = self.tokens[self.current_position : self.current_position + B*T + 1]
+
+        x = buf[:-1].reshape(B, T)
+        y = buf[1:].reshape(B, T)
+
+        self.current_position += B * T
+
+        if self.current_position + (B * T + 1) > len(self.tokens):
+            self.current_position = 0
+        return x, y
+    
+
+
+train_loader = DataLoader(B=16, T=1024)
 model = GPT()
 
-print(f"Using device: {Device.DEFAULT}")
+optimizer = AdamW(nn.state.get_parameters(model), lr=3e-4)
+for i in range(50):
+    t0 = time.time()
+    x, y = train_loader.next_batch()
 
-Tensor.training = False
-Tensor.no_grad = True
-
-import tiktoken
-enc = tiktoken.get_encoding("gpt2")
-tokens = enc.encode("Hello, I'm a language model,")
-tokens = Tensor(tokens, dtype=dtypes.long)
-x = tokens.unsqueeze(0).repeat(num_return_sequences, 1)
-
-while x.size(1) < max_length:
+    optimizer.zero_grad()
     logits = model(x)
-    logits = logits[:, -1, :]
-    probs = logits.softmax(axis=-1)
-    ix = probs.multinomial(num_samples=1)
-
-    x = x.cat(ix, dim=1)
-
-for i in range(num_return_sequences):
-    tokens = x[i, :max_length].tolist()
-    decoded = enc.decode(tokens)
-    print(">", decoded)
-
-Tensor.training = True
-Tensor.no_grad = False
+    loss = logits.reshape(-1, logits.shape[-1]).cross_entropy(y.flatten()).backward()
+    optimizer.step()
+    t1 = time.time()
+    dt = (t1 - t0) * 1000
+    print(f"step {i}, loss: {loss.item()}")
