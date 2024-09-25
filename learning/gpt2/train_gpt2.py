@@ -6,6 +6,8 @@ from tinygrad.nn.optim import AdamW
 from tinygrad import dtypes
 from tinygrad import Device
 
+import numpy as np
+
 # hyperparameters
 block_size: int = 1024  # Maximum sequence length for input and target
 vocab_size: int = 50257  # Size of the vocabulary (number of unique tokens)
@@ -21,6 +23,9 @@ class CausalSelfAttention:
         self.c_attn = nn.Linear(n_embd, 3 * n_embd, bias=True)
         self.c_proj = nn.Linear(n_embd, n_embd, bias=True)
 
+        self.bias = Tensor.ones(block_size, block_size).reshape(1, 1, block_size, block_size)
+        self.bias.requires_grad = False
+
     def __call__(self, x):
         B, T, C = x.size()  # batch size, sequence length, embedding dimensionality (n_embd)
 
@@ -33,24 +38,22 @@ class CausalSelfAttention:
         v = v.reshape(B, T, n_head, C // n_head).transpose(1,
                                                            2)  # (B, nh, T, hs)
 
-        # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
-        y = q.scaled_dot_product_attention(
-            k, v, attn_mask=None, dropout_p=0.2 if Tensor.training else 0, is_causal=True)
-        # re-assemble all head outputs side by side
+        att = (q @ k.transpose(-2, -1)) * (1.0 / np.sqrt(k.shape[-1]))
+        att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
+        att = att.softmax(axis=-1)
+        y = att @ v
         y = y.transpose(1, 2).contiguous().reshape(B, T, C)
-
-        # output projection
-        y = self.c_proj(y).dropout(0.2)
+        y = self.c_proj(y)
         return y
 
 
 class MLP:
     def __init__(self):
-        self.c_fc = nn.Linear(n_embd, 4 * n_embd, bias=True)
-        self.c_proj = nn.Linear(4 * n_embd, n_embd, bias=True)
+        self.c_fc = nn.Linear(n_embd, 4 * n_embd)
+        self.c_proj = nn.Linear(4 * n_embd, n_embd)
 
     def __call__(self, x):
-        x = self.c_fc(x).quick_gelu()
+        x = self.c_fc(x).gelu()
         x = self.c_proj(x)
         return x
 
@@ -76,7 +79,6 @@ class GPT:
         self.ln_f = nn.LayerNorm(n_embd)
 
         self.lm_head = nn.Linear(n_embd, vocab_size, bias=False)
-
     @classmethod
     def from_pretrained(cls):
         # create a from-scratch initialized minGPT model
@@ -101,27 +103,85 @@ class GPT:
         # basically the openai checkpoints use a "Conv1D" module, but we only want to use a vanilla Linear
         # this means that we have to transpose these weights when we import them
         assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
-
-        # print("sd_keys_hf: ", sd_keys_hf)
-        print("sd_keys: ", sd_keys)
         for k in sd_keys_hf:
             k_trimmed = k.replace('transformer.', '')  # Remove 'transformer.' prefix
-            if any(k_trimmed.endswith(w) for w in transposed):
+            if any(k.endswith(w) for w in transposed):
                 # special treatment for the Conv1D weights we need to transpose
                 assert sd_hf[k].shape[::-1] == sd[k_trimmed].shape
                 Tensor.no_grad = True
-                sd[k_trimmed] = sd_hf[k].T
+                sd[k_trimmed].assign(Tensor(sd_hf[k].numpy()).transpose())
                 Tensor.no_grad = False
             else:
                 # vanilla copy over the other parameters
                 assert sd_hf[k].shape == sd[k_trimmed].shape
                 Tensor.no_grad = True
-                sd[k_trimmed] = sd_hf[k]
+                sd[k_trimmed].assign(Tensor(sd_hf[k].numpy()))
                 Tensor.no_grad = False
 
+        # Check if model's params are correctly set to the sd model's params
+        for k in sd_keys:
+            k_hf = 'transformer.' + k if k != 'lm_head.weight' else k
+            if any(k.endswith(w) for w in transposed):
+                assert np.allclose(sd[k].numpy(), sd_hf[k_hf].numpy().T, atol=1e-5), f"Param {k} not correctly set"
+            else:
+                assert np.allclose(sd[k].numpy(), sd_hf[k_hf].numpy(), atol=1e-5), f"Param {k} not correctly set"
+        
+        print("All parameters successfully loaded and verified.")
         return model
+    
+    def __call__(self, idx):
+
+        B, T = idx.size()
+        assert T <= block_size, f"Cannot forward sequence of length {T}, block size is only {block_size}"
+        pos = Tensor.arange(0, T, dtype=dtypes.long) # shape (t)
+
+        # forward the GPT model itself
+        pos_emb = self.wpe(pos) # position embeddings of shape (t, n_embd)
+        tok_emb = self.wte(idx) # token embeddings of shape (b, t, n_embd)
+        
+        x = tok_emb + pos_emb
+
+        for block in self.h:
+            x = block(x)
+        x = self.ln_f(x)
+        
+        logits = self.lm_head(x)
+        return logits
 
 # -----------------------------------------------------------------------------
 
-model = GPT.from_pretrained()
-print("ran")
+
+
+
+num_return_sequences = 2
+max_length = 30
+
+# model = GPT.from_pretrained()
+model = GPT()
+
+print(f"Using device: {Device.DEFAULT}")
+
+Tensor.training = False
+Tensor.no_grad = True
+
+import tiktoken
+enc = tiktoken.get_encoding("gpt2")
+tokens = enc.encode("Hello, I'm a language model,")
+tokens = Tensor(tokens, dtype=dtypes.long)
+x = tokens.unsqueeze(0).repeat(num_return_sequences, 1)
+
+while x.size(1) < max_length:
+    logits = model(x)
+    logits = logits[:, -1, :]
+    probs = logits.softmax(axis=-1)
+    ix = probs.multinomial(num_samples=1)
+
+    x = x.cat(ix, dim=1)
+
+for i in range(num_return_sequences):
+    tokens = x[i, :max_length].tolist()
+    decoded = enc.decode(tokens)
+    print(">", decoded)
+
+Tensor.training = True
+Tensor.no_grad = False
