@@ -219,7 +219,7 @@ class DataLoader:
 
 
 Tensor.training = True
-train_loader = DataLoader(B=4, T=1024)
+train_loader = DataLoader(B=8, T=1024)
 model = GPT()
 
 
@@ -236,16 +236,17 @@ def step():
     optimizer.step()
     t1 = time.time()
     dt = (t1 - t0) * 1000
-    return loss, dt
+    tokens_per_second = (train_loader.B * train_loader.T) / (t1 - t0)
+    return loss, dt, tokens_per_second
 
 tiny_step = TinyJit(step)
 
 print("TINYJIT ------------------------------")
 for i in range(50):
-    loss, dt = tiny_step()
-    print(f"step {i}, loss: {loss.item()}, dt: {dt:.2f}ms")
+    loss, dt, tokens_per_second = tiny_step()
+    print(f"step {i}, loss: {loss.item()}, dt: {dt:.2f}ms, tokens_per_second: {tokens_per_second:.2f}")
 
-    print("REGS ------------------------------")
+print("REGS ------------------------------")
 for i in range(50):
-    loss, dt = step()
-    print(f"step {i}, loss: {loss.item()}, dt: {dt:.2f}ms")
+    loss, dt, tokens_per_second = step()
+    print(f"step {i}, loss: {loss.item()}, dt: {dt:.2f}ms, tokens_per_second: {tokens_per_second:.2f}")
