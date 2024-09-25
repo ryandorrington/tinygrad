@@ -227,9 +227,8 @@ Tensor.training = True
 train_loader = DataLoader(B=8, T=1024)
 model = GPT()
 
-# Shard the model parameters across available GPUs
-for k, v in nn.state.get_state_dict(model).items():
-    v.shard_(GPUS)
+for k, x in nn.state.get_state_dict(model).items(): x.to_(GPUS)
+
 
 optimizer = AdamW(nn.state.get_parameters(model), lr=3e-4)
 
