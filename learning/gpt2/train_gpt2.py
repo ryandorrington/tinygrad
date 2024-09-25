@@ -12,6 +12,8 @@ import tiktoken
 
 GPUS = [f'{Device.DEFAULT}:{i}' for i in range(getenv("GPUS", 2))]
 
+print(f"Using GPUs: {GPUS}")
+
 # hyperparameters
 block_size: int = 1024  # Maximum sequence length for input and target
 vocab_size: int = 50257  # Size of the vocabulary (number of unique tokens)
@@ -225,6 +227,9 @@ Tensor.training = True
 train_loader = DataLoader(B=8, T=1024)
 model = GPT()
 
+# Shard the model parameters across available GPUs
+for k, v in nn.state.get_state_dict(model).items():
+    v.shard_(GPUS)
 
 optimizer = AdamW(nn.state.get_parameters(model), lr=3e-4)
 
