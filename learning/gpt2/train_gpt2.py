@@ -240,6 +240,7 @@ def step():
     logits = model(x)
     loss = logits.reshape(-1, logits.shape[-1]).cross_entropy(y.flatten()).backward()
     optimizer.step()
+    Device.DEFAULT.synchronize()
     t1 = time.time()
     dt = (t1 - t0) * 1000
     tokens_per_second = (train_loader.B * train_loader.T) / (t1 - t0)
