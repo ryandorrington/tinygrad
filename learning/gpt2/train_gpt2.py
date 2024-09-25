@@ -141,7 +141,7 @@ class GPT:
 
         B, T = idx.size()
         assert T <= block_size, f"Cannot forward sequence of length {T}, block size is only {block_size}"
-        pos = Tensor.arange(0, T, dtype=dtypes.long) # shape (t)
+        pos = Tensor.arange(0, T, dtype=dtypes.long).shard(GPUS) # shape (t)
 
         # forward the GPT model itself
         pos_emb = self.wpe(pos) # position embeddings of shape (t, n_embd)
