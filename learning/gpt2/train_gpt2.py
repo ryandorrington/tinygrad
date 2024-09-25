@@ -218,6 +218,7 @@ class DataLoader:
     
 
 
+Tensor.training = True
 train_loader = DataLoader(B=16, T=1024)
 model = GPT()
 
