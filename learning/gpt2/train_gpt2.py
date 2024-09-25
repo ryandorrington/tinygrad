@@ -141,7 +141,7 @@ class GPT:
 
         B, T = idx.size()
         assert T <= block_size, f"Cannot forward sequence of length {T}, block size is only {block_size}"
-        pos = Tensor.arange(0, T, dtype=dtypes.long).shard(GPUS) # shape (t)
+        pos = Tensor.arange(0, T, dtype=dtypes.float16).shard(GPUS) # shape (t)
 
         # forward the GPT model itself
         pos_emb = self.wpe(pos) # position embeddings of shape (t, n_embd)
@@ -170,7 +170,7 @@ def generate_from_hf():
 
     enc = tiktoken.get_encoding("gpt2")
     tokens = enc.encode("Hello, I'm a language model,")
-    tokens = Tensor(tokens, dtype=dtypes.long)
+    tokens = Tensor(tokens, dtype=dtypes.float16)
     x = tokens.unsqueeze(0).repeat(num_return_sequences, 1)
 
     while x.size(1) < max_length:
@@ -201,7 +201,7 @@ class DataLoader:
         
         enc = tiktoken.get_encoding("gpt2")
         tokens = enc.encode(text)
-        self.tokens = Tensor(tokens).shard(GPUS)
+        self.tokens = Tensor(tokens, dtype=dtypes.float16).shard(GPUS)
 
         print(f"Loaded {len(tokens)} tokens")
         print(f"1 epoch = {len(tokens) // (B * T)} batches")
