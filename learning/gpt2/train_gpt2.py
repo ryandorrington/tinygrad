@@ -239,19 +239,18 @@ for k, x in nn.state.get_state_dict(model).items(): x.to_(GPUS)
 optimizer = AdamW(nn.state.get_parameters(model), lr=3e-4, b2=0.95, weight_decay=0.1)
 
 def step():
-    with Context(BEAM=2):
-        t0 = time.time()
-        x, y = train_loader.next_batch()
+    t0 = time.time()
+    x, y = train_loader.next_batch()
 
-        optimizer.zero_grad()
-        logits = model(x)
-        loss = logits.reshape(-1, logits.shape[-1]).cross_entropy(y.flatten()).backward()
-        optimizer.step()
-        Device[Device.DEFAULT].synchronize()
-        t1 = time.time()
-        dt = (t1 - t0) * 1000
-        tokens_per_second = (train_loader.B * train_loader.T) / (t1 - t0)
-        return loss, dt, tokens_per_second
+    optimizer.zero_grad()
+    logits = model(x)
+    loss = logits.reshape(-1, logits.shape[-1]).cross_entropy(y.flatten()).backward()
+    optimizer.step()
+    Device[Device.DEFAULT].synchronize()
+    t1 = time.time()
+    dt = (t1 - t0) * 1000
+    tokens_per_second = (train_loader.B * train_loader.T) / (t1 - t0)
+    return loss, dt, tokens_per_second
 
 tiny_step = TinyJit(step)
 
