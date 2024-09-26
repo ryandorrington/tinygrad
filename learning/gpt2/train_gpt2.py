@@ -12,7 +12,7 @@ import tiktoken
 
 GPUS = [f'{Device.DEFAULT}:{i}' for i in range(getenv("GPUS", 2))]
 
-print(f"Using GPUs: {GPUS}")
+# print(f"Using GPUs: {GPUS}")
 
 # hyperparameters
 block_size: int = 1024  # Maximum sequence length for input and target
