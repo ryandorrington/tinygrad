@@ -16,7 +16,7 @@ print(f"Using GPUs: {GPUS}")
 
 # hyperparameters
 block_size: int = 1024  # Maximum sequence length for input and target
-vocab_size: int = 50257  # Size of the vocabulary (number of unique tokens)
+vocab_size: int = 50304  # Size of the vocabulary (number of unique tokens)
 n_layer: int = 12      # Number of transformer layers in the model
 n_head: int = 12       # Number of attention heads in each transformer layer
 n_embd: int = 768     # Dimensionality of the token embeddings and hidden states
@@ -236,7 +236,7 @@ model = GPT()
 for k, x in nn.state.get_state_dict(model).items(): x.to_(GPUS)
 
 
-optimizer = AdamW(nn.state.get_parameters(model), lr=3e-4)
+optimizer = AdamW(nn.state.get_parameters(model), lr=3e-4, b2=0.95, weight_decay=0.1)
 
 def step():
     t0 = time.time()
