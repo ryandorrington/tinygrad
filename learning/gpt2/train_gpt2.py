@@ -45,10 +45,16 @@ class CausalSelfAttention:
         v = v.reshape(B, T, n_head, C // n_head).transpose(1,
                                                            2)  # (B, nh, T, hs)
 
-        att = (q @ k.transpose(-2, -1)) * (1.0 / np.sqrt(k.size(-1)))
-        att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
-        att = att.softmax(axis=-1)
-        y = att @ v
+
+
+        # att = (q @ k.transpose(-2, -1)) * (1.0 / np.sqrt(k.size(-1)))
+        # att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
+        # att = att.softmax(axis=-1)
+        # y = att @ v
+
+        y = q.scaled_dot_product_attention(k, v, is_causal=True)
+
+
         y = y.transpose(1, 2).contiguous().reshape(B, T, C)
         y = self.c_proj(y)
         return y
