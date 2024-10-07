@@ -3509,6 +3509,9 @@ class Tensor:
       ret = ret.reshape(bs, oy, ox, groups, rcout)[:, :, :, :, :-added_output_channels]
       cout = groups * (rcout - added_output_channels)
 
+
+    print(f"dtype of ret: {ret.dtype}")
+    print(f"shape of ret: {ret.shape}")
     # NCHW output
     ret = ret.reshape(bs, oy, ox, cout).permute(0,3,1,2)
     return ret if bias is None else ret.add(bias.reshape(1, -1, 1, 1))
